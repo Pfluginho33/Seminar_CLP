@@ -2,16 +2,19 @@ import pandas as pd
 import numpy as np
 from docplex.mp.model import Model
 from docplex.mp.relax_linear import LinearRelaxer
+from docplex.mp.conflict_refiner import ConflictRefiner, VarUbConstraintWrapper, VarLbConstraintWrapper
+from docplex.mp.progress import TextProgressListener
+
 
 class SCLP:
     def __init__(self,r0, w, B, S_existing, S_new):
         self.r0 = r0                    #coverage Radius
-        self.w = w                      #buying power of demand points
+       # self.w = w                      #buying power of demand points
         self.B = B                      #budget
         self.S_existing = S_existing    #fixed costs of upgrading existing facilities
         self.S_new = S_new              #fixed costs of building new facilities
     
-        
+    #Auslesen und Erstellen der Distanzmatrix 
     def get_n(self, filename):
         file = pd.read_csv(filename, header = None)
         n = int(file.iloc[0,0])
@@ -27,8 +30,7 @@ class SCLP:
                 i, j, k = int(row[0]), int(row[1]), int(row[2])
                 c[i-1][j-1] = k
                 c[j-1][i-1] = k
-        return c
-    
+        return c 
     
     def floyd_warshall(self,c,n):
         for k in range(n):
@@ -37,12 +39,34 @@ class SCLP:
                     c[i][j] = min(c[i][j], c[i][k] + c[k][j])
         return c
     
-    def calc_b_matrix(self, n, p, d_matrix):
+    
+    #Erstellen von Arrays für Radii, Fixkosten
+    def create_r(self,n):
+        r = np.zeros(n)
+        a = 20
+        for i in range(a):
+            r[i] = self.r0
+        return r
+    
+    #r müsste doch aus der preamble kommen mit den "relevanten Radii"
+    
+    
+    
+    
+    #Kostenfuntkion und Matrix B
+    def calc_f(self, r):
+        f = r * r
+        return f
+    
+    
+    def calc_b(self, n, p, d_matrix):
         b_matrix = np.zeros((n, p))
         for i in range(n):
-            for j in range(p):
-                if d_matrix[i, j] <= self.r0:
-                    b_matrix[i, j] = 1
+            for k in range(p):
+                if d_matrix[i, k] > self.r0:
+                    b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(self.r0) + self.S_new + self.S_existing
+                else:
+                    b_matrix[i, k] = 0
         return b_matrix
     
     
@@ -56,19 +80,27 @@ class SCLP:
         
         init_matrix = self.read_file(filepath, n)
         d_matrix = self.floyd_warshall(init_matrix, n)
-        b_matrix = self.calc_b_matrix(n, p, d_matrix)
+        b_matrix = self.calc_b(n, p, d_matrix)
         
         # ---Variables---
         mdl.x=mdl.binary_var_matrix(n, p, name="x")
         mdl.y=mdl.binary_var_matrix(n, p, name="y")
+        
+        
+        #Demand
+        w = []
+        a = abs(n-20)
+        for i in range(a):
+            x = i + 20
+            w[x] = 1/x
         
         #Indicator Set I
         I = {}
         for j in range(p):
             I[j]=[i for i in range(len(d_matrix)) if d_matrix[i, j] > self.r0]
         
-        F={}
-        C={}
+        F=[]
+        C=[]
         
         for z in range(10):
             F[z] = z
@@ -76,7 +108,7 @@ class SCLP:
         
         
         # ---Objective---
-        mdl.maximize(mdl.sum((self.w[i] * self.C[i] * mdl.sum(mdl.y[i, j] for j in range(p))) /
+        mdl.maximize(mdl.sum((w[i] * self.C[i] * mdl.sum(mdl.y[i, j] for j in range(p))) /
                         ((self.F[i] + self.C[i]) * (self.F[i] + self.C[i] + mdl.sum(mdl.y[i, j] for j in range(p)))) 
                         for i in range(n)))
         
