@@ -7,9 +7,8 @@ from docplex.mp.progress import TextProgressListener
 
 
 class SCLP:
-    def __init__(self,r0, w, B, S_existing, S_new):
+    def __init__(self,r0, B, S_existing, S_new):
         self.r0 = r0                    #coverage Radius
-       # self.w = w                      #buying power of demand points
         self.B = B                      #budget
         self.S_existing = S_existing    #fixed costs of upgrading existing facilities
         self.S_new = S_new              #fixed costs of building new facilities
@@ -48,23 +47,32 @@ class SCLP:
             r[i] = self.r0
         return r
     
-    #r müsste doch aus der preamble kommen mit den "relevanten Radii"
+    def create_S(self, n):
+        s = np.zeros(n)
+        for i in range(n):
+            if i < 10:
+                s[i] = self.S_existing
+            # i bewteen 10 and 20
+            #if i >= 10 and i < 20:
+            #    s[i] = 0
+            else:
+                s[i] = self.S_new
+        return s
     
-    
-    
-    
-    #Kostenfuntkion und Matrix B
+    #Kostenfuntkion
     def calc_f(self, r):
-        f = r * r
+        f = r**2
         return f
     
     
     def calc_b(self, n, p, d_matrix):
+        #TODO: Sortierung implementieren
+        s = self.create_S(n)
         b_matrix = np.zeros((n, p))
         for i in range(n):
             for k in range(p):
                 if d_matrix[i, k] > self.r0:
-                    b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(self.r0) + self.S_new + self.S_existing
+                    b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(self.r0) + s[i]
                 else:
                     b_matrix[i, k] = 0
         return b_matrix
@@ -76,7 +84,11 @@ class SCLP:
         
         n = self.get_n(filepath)
         
-        p = 20    #p are first 10 nodes and last 10 nodes
+        #p = n-10   #p are first 10 nodes and last 10 nodes
+        #----------------------------------------------------------------
+        #TODO:
+        #Idee: p als "Set" aufbauen mit ersten 10 und letzten 10 Knoten
+        #----------------------------------------------------------------
         
         init_matrix = self.read_file(filepath, n)
         d_matrix = self.floyd_warshall(init_matrix, n)
@@ -170,6 +182,6 @@ class SCLP:
         return x, y, obj, kpis
     
 
-SCLP(20,10,5000,500,0).run()
+SCLP(20,5000,500,0).run()
        
     
