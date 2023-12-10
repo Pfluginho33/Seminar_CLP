@@ -1,9 +1,10 @@
+import gurobipy as gp
+from gurobipy import GRB
 import pandas as pd
 import numpy as np
-from docplex.mp.model import Model
-from docplex.mp.relax_linear import LinearRelaxer
-from docplex.mp.conflict_refiner import ConflictRefiner, VarUbConstraintWrapper, VarLbConstraintWrapper
-from docplex.mp.progress import TextProgressListener
+# Gurobi benötigt keinen direkten Ersatz für LinearRelaxer
+# Konfliktlösung in Gurobi erfolgt anders, daher wird dieser Import entfernt
+# Gurobi hat eigene Methoden für den Fortschrittslistener
 
 
 class SCLP:
@@ -42,8 +43,7 @@ class SCLP:
     #Erstellen von Arrays für Radii, Fixkosten
     def create_r(self,n):
         r = np.zeros(n)
-        a = 20
-        for i in range(a):
+        for i in range(10):
             r[i] = self.r0
         return r
     
@@ -52,9 +52,6 @@ class SCLP:
         for i in range(n):
             if i < 10:
                 s[i] = self.S_existing
-            # i bewteen 10 and 20
-            #if i >= 10 and i < 20:
-            #    s[i] = 0
             else:
                 s[i] = self.S_new
         return s
@@ -66,103 +63,155 @@ class SCLP:
     
     
     def calc_b(self, n, p, d_matrix):
-        #TODO: Sortierung implementieren
         s = self.create_S(n)
+        r = self.create_r(n)
         b_matrix = np.zeros((n, p))
         for i in range(n):
             for k in range(p):
-                if d_matrix[i, k] > self.r0:
-                    b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(self.r0) + s[i]
+                if k < 10:
+                    if d_matrix[i, k] > r[k]:
+                        b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(r[k]) + s[k]
+                    else:
+                        b_matrix[i, k] = 0
                 else:
-                    b_matrix[i, k] = 0
-        return b_matrix
+                    b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(r[k]) + s[k]
+
+        b_sort = np.full((p, n), 8000)  # Verwenden eines numpy-Arrays anstelle einer Liste
+        # Remove tied values
+        for k in range(p):
+            unique_values = np.unique(b_matrix[:, k])
+            b_sort[k, :len(unique_values)] = unique_values
+
+        return b_sort
+    
+    #Preliminary Analysis 
+    '''Wenn die Distanz von i zu j größer als r0 ist für die ersten 10 facilites, aber kleiner als r0 für die zweiten 10 facilities, dann ist j in der pre_list enthalten
+    Die Pre-List speichert nämlich die Indizes der Facilites die bereits 100 Prozent Market share haben (kompletten Demand abgreifen)
+    '''
+    def pre_analyisis(self, n, d_matrix):
+        pre_list = []
+        for i in range (n):
+            for j in range (10):
+                if d_matrix[i,j] > self.r0:
+                    if d_matrix[i,(j+10)] < self.r0:
+                        pre_list.append(j)
+        return pre_list
     
     
     def build_model(self, filepath):
         # Initialisieren des CPLEX-Modells
-        mdl = Model("SCLP")
+        mdl = gp.Model("SCLP")
         
         n = self.get_n(filepath)
-        
-        #p = n-10   #p are first 10 nodes and last 10 nodes
-        #----------------------------------------------------------------
-        #TODO:
-        #Idee: p als "Set" aufbauen mit ersten 10 und letzten 10 Knoten
-        #----------------------------------------------------------------
+        p=n
+        r=self.create_r(n)
+        #p = n-10
         
         init_matrix = self.read_file(filepath, n)
         d_matrix = self.floyd_warshall(init_matrix, n)
         b_matrix = self.calc_b(n, p, d_matrix)
         
         # ---Variables---
-        mdl.x=mdl.binary_var_matrix(n, p, name="x")
-        mdl.y=mdl.binary_var_matrix(n, p, name="y")
+        x = mdl.addVars(n, p, vtype=GRB.BINARY, name="x")
+        y = mdl.addVars(n, p, vtype=GRB.BINARY, name="y")
+
         
         
         #Demand
-        w = []
-        a = abs(n-20)
-        for i in range(a):
-            x = i + 20
-            w[x] = 1/x
+        w = [None] * n
+        for i in range(n):
+            w[i] = 1/(i+1)
         
         #Indicator Set I
-        I = {}
+        I = [np.nan]*p
         for j in range(p):
-            I[j]=[i for i in range(len(d_matrix)) if d_matrix[i, j] > self.r0]
+            I[j]=[i for i in range(len(d_matrix)) if d_matrix[i, j] > r[j]]
         
-        F=[]
-        C=[]
+        F = [None] * n
+        C = [None] * n
         
         for z in range(10):
             F[z] = z
             C[z] = z + 10
         
-        
+        '''
         # ---Objective---
-        mdl.maximize(mdl.sum((w[i] * self.C[i] * mdl.sum(mdl.y[i, j] for j in range(p))) /
-                        ((self.F[i] + self.C[i]) * (self.F[i] + self.C[i] + mdl.sum(mdl.y[i, j] for j in range(p)))) 
+        mdl.maximize(mdl.sum((w[i] * C[i] * mdl.sum(mdl.y[i, j] for j in range(p))) /
+                        ((F[i] + C[i]) * (F[i] + C[i] + mdl.sum(mdl.y[i, j] for j in range(p)))) 
                         for i in range(n)))
+        '''
         
+        #Test Objective
+        #mdl.max(sum(x[i, j] for i in range(n) for j in range(p)))
+        mdl.setObjective(gp.quicksum(x[i, j] for i in range(n) for j in range(p)), GRB.MAXIMIZE)
+
         # ---Constraints---
         #A.2
         for j in range(p):
-            mdl.add_constraint(mdl.sum(mdl.x[i, j] for i in range(n) <= 1))
+            mdl.addConstr(sum(x[i, j] for i in range(n)) <= 1)
+        
         
         #A.3
         for i in range(n):
             for j in range(p):
-                mdl.add_constraint(d_matrix[i, j] * mdl.y[i, j] <= mdl.sum(d_matrix[k, j] * mdl.x[k, j] for k in enumerate(I[j])))
+                mdl.addConstr(
+                    d_matrix[i, j] * y[i, j] <= gp.quicksum(d_matrix[k, j] * x[k, j] for k in range(n)),
+                    f"constraint_{i}_{j}"
+        )
+
             
         #A.4
-        mdl.add_constraint(mdl.sum(b_matrix[i, j] * mdl.y[i, j] for i in range(self.n) for j in range(self.p)) <= self.B)
+        mdl.addConstr(gp.quicksum(b_matrix[i, j] * y[i, j] for i in range(n) for j in range(p)) <= self.B)
         #TODO: define b_matrix function
         
-        #A.5
+        #A.5†
         for i in range(n):
             for j in range(p):
                 if I[j] != i:
-                    mdl.add_constraint(mdl.y[i, j] == 0)
+                    mdl.addConstr(y[i, j] == 0)
         
         return mdl
     
+    
     def solve_model(self, mdl):
-        mdl.solve()
-        mdl.print_solution()
-        mdl.report_kpis()
-        return mdl  
+        # Das Modell lösen
+        mdl.optimize()
+
+        # Prüfen, ob eine Lösung gefunden wurde
+        if mdl.status == GRB.OPTIMAL:
+            # Ergebnisse ausgeben
+           # for v in mdl.getVars():
+            #    print(f"{v.varName} = {v.x}")
+
+            # Objektivwert ausgeben
+            print(f"Optimaler Zielfunktionswert: {mdl.objVal}")
+        elif mdl.status == GRB.INF_OR_UNBD:
+            print("Modell ist unbeschränkt oder unzulässig.")
+        elif mdl.status == GRB.INFEASIBLE:
+            print("Modell ist unzulässig.")
+        elif mdl.status == GRB.UNBOUNDED:
+            print("Modell ist unbeschränkt.")
+        else:
+            print(f"Optimierung wurde mit Status {mdl.status} beendet.")
+
+        return mdl 
     
     def get_solution(self, mdl):
-        x = np.zeros((self.n, self.p))
-        y = np.zeros((self.n, self.p))
-        for i in range(self.n):
-            for j in range(self.p):
-                x[i, j] = mdl.solution.get_value(mdl.x[i, j])
-                y[i, j] = mdl.solution.get_value(mdl.y[i, j])
-        return x, y
+        #n = mdl.n
+        if mdl.status == GRB.OPTIMAL:
+            # Erstellen eines Wörterbuchs für die Lösungswerte
+            solution = {}
+            for v in mdl.getVars():
+                solution[v.varName] = v.x  # Speichern des Wertes der Variablen
+
+            # Ausgabe des Lösungswörterbuchs
+            return solution
+        else:
+            # Keine gültige Lösung gefunden
+            return None
     
     def get_objective(self, mdl):
-        return mdl.objective_value
+        return mdl.objVal
     
     
     def get_kpis(self, mdl):
@@ -172,16 +221,14 @@ class SCLP:
     def run(self):
         mdl = self.build_model(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed1.csv")
         mdl = self.solve_model(mdl)
-        x, y = self.get_solution(mdl)
+        #x, y = self.get_solution(mdl)
         obj = self.get_objective(mdl)
-        kpis = self.get_kpis(mdl)
-        print("x: ", x)
-        print("y: ", y)
+        #kpis = self.get_kpis(mdl)
+        #print("x: ", x)
+        #print("y: ", y)
         print("obj: ", obj)
-        print("kpis: ", kpis)
-        return x, y, obj, kpis
-    
+        #print("kpis: ", kpis)
+       # return x, y, obj, kpis
+        return obj
 
 SCLP(20,5000,500,0).run()
-       
-    
