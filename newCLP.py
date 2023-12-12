@@ -97,15 +97,94 @@ class SCLP:
                         pre_list.append(j)
         return pre_list
     
+    def calc_e(self, n, F, C, w):
+        e = np.zeros(n)
+        for i in range(n):
+            if F[i] + C[i] > 0:
+                e[i] = (w[i] * C[i]) / ((F[i] + C[i]) * (F[i] + C[i]))
+            elif F[i] + C[i] == 0:
+                e[i] = w[i]
+        return e
+    
+    '''Branch and Bound Algorithmus'''
+    
+    def calc_upper_bound(self, n, p, b_matrix, e):
+        H = self.B  # Since all distances are integers, the cost for improving a facility is integer thus we set H = B
+        h = self.B / H
+        U = np.zeros((H, p))  # U[h,k] is the upper bound for a remaining budget of h(B/H) available for improving facilities k,...,p
+        V = np.zeros((H, p))  # V[h,k] is the additional market share that can be obtained by using a budget h to improve facility k
+
+        # Step 1: Calculation of V
+        for k in range(p):
+            for h in range(H):
+                V[h, k] = 0
+            for i in range(n):
+                if b_matrix[i, k] > 0:
+                    if h >= b_matrix[i, k]:
+                        V[:, k] += e[i]
+
+        # Step 2: Calculation of U
+        for k in range((p - 1), 0, -1):
+            for h in range(H):
+                U[h, k] = max([V[s, k] + U[h - s, k + 1] for s in range(h)])
+
+        return U
+        
+        
+    
+    def branch_and_bound(self, n, d_matrix, b_matrix, w, F, C, e, U, epsilon):
+        p = n
+        t = np.zeros(p)
+        B_zero = 0
+        delta = np.zeros(p)
+        D_Star = 0
+        H = self.B
+        h = H * ((self.B - B_zero) / self.B)
+        
+        #Step 1 of Branch and Bound Algorithm
+        
+        U = self.calc_upper_bound(n, p, b_matrix, e)
+        k = 0
+        t[k] = 1
+        delta[k] = 0
+        
+        #Step 2 of Branch and Bound Algorithm - Check if Node is to fathom
+        
+       # if delta[k] + U[h,(k+1)] <= D_Star + epsilon:
+        
+        #Step 3 of Branch and Bound Algorithm
+        k += 1
+        if k == p:
+            # calc market share
+            a = 0
+        elif k < p:
+            t[k] = 1
+        
+        #Step 4 of Branch and Bound Algorithm
+        t[k] = t[k] + 1
+        B_zero = B_zero + b_matrix[t[k], k] - b_matrix[t[k] - 1, k]
+        if B_zero > self.B:
+            k = k - 1
+            if k > 0:
+                a=0
+                # Go to Step 4
+            elif k == 0:
+                return D_Star
+        elif B_zero <= self.B:
+            h = H * ((self.B - B_zero) / self.B)
+            # The Fi and Dk are updated
+            
+        
+   
     
     def build_model(self, filepath):
         # Initialisieren des CPLEX-Modells
         mdl = gp.Model("SCLP")
         
         n = self.get_n(filepath)
-        p=n
-        r=self.create_r(n)
-        #p = n-10
+        p = n
+        r = self.create_r(n)
+
         
         init_matrix = self.read_file(filepath, n)
         d_matrix = self.floyd_warshall(init_matrix, n)
@@ -116,9 +195,8 @@ class SCLP:
         y = mdl.addVars(n, p, vtype=GRB.BINARY, name="y")
 
         
-        
-        #Demand
-        w = [None] * n
+        #Demand 
+        w = np.zeros(n)
         for i in range(n):
             w[i] = 1/(i+1)
         
@@ -127,23 +205,27 @@ class SCLP:
         for j in range(p):
             I[j]=[i for i in range(len(d_matrix)) if d_matrix[i, j] > r[j]]
         
-        F = [None] * n
-        C = [None] * n
+        F = np.zeros(n)
+        C = np.zeros(n)
         
-        for z in range(10):
-            F[z] = z
-            C[z] = z + 10
+        for i in range (n):
+            for j in range (20):
+                if j < 10:
+                    if d_matrix[i,j] < self.r0:
+                        F[i] += 1
+                else:
+                    if d_matrix[i,j] < self.r0:
+                        C[i] += 1
+            
         
-        '''
         # ---Objective---
-        mdl.maximize(mdl.sum((w[i] * C[i] * mdl.sum(mdl.y[i, j] for j in range(p))) /
-                        ((F[i] + C[i]) * (F[i] + C[i] + mdl.sum(mdl.y[i, j] for j in range(p)))) 
-                        for i in range(n)))
-        '''
+        mdl.setObjective(gp.quicksum((w[i] * C[i] * gp.quicksum(mdl.y[i, j] for j in range(p))) /
+                        ((F[i] + C[i]) * (F[i] + C[i] + gp.quicksum(mdl.y[i, j] for j in range(p)))) 
+                        for i in range(n)), GRB.MAXIMIZE)
         
         #Test Objective
         #mdl.max(sum(x[i, j] for i in range(n) for j in range(p)))
-        mdl.setObjective(gp.quicksum(x[i, j] for i in range(n) for j in range(p)), GRB.MAXIMIZE)
+        #mdl.setObjective(gp.quicksum(x[i, j] for i in range(n) for j in range(p)), GRB.MAXIMIZE)
 
         # ---Constraints---
         #A.2
@@ -156,8 +238,7 @@ class SCLP:
             for j in range(p):
                 mdl.addConstr(
                     d_matrix[i, j] * y[i, j] <= gp.quicksum(d_matrix[k, j] * x[k, j] for k in range(n)),
-                    f"constraint_{i}_{j}"
-        )
+                    f"constraint_{i}_{j}")
 
             
         #A.4
