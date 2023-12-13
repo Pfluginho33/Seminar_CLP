@@ -41,19 +41,19 @@ class SCLP:
     
     
     #Erstellen von Arrays für Radii, Fixkosten
-    def create_r(self,n):
-        r = np.zeros(n)
+    def create_r(self,p):
+        r = np.zeros(p)
         for i in range(10):
             r[i] = self.r0
         return r
     
-    def create_S(self, n):
-        s = np.zeros(n)
-        for i in range(n):
-            if i < 10:
-                s[i] = self.S_existing
+    def create_S(self, p):
+        s = np.zeros(p)
+        for j in range(p):
+            if j < 10:
+                s[j] = self.S_existing
             else:
-                s[i] = self.S_new
+                s[j] = self.S_new
         return s
     
     #Kostenfuntkion
@@ -62,9 +62,7 @@ class SCLP:
         return f
     
     
-    def calc_b(self, n, p, d_matrix):
-        s = self.create_S(n)
-        r = self.create_r(n)
+    def calc_b(self, n, p, s, r, d_matrix):
         b_matrix = np.zeros((n, p))
         for i in range(n):
             for k in range(p):
@@ -76,7 +74,7 @@ class SCLP:
                 else:
                     b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(r[k]) + s[k]
 
-        b_sort = np.full((p, n), 8000)  # Verwenden eines numpy-Arrays anstelle einer Liste
+        b_sort = np.full((p, n), (self.B * 2))                #Verwernde B * 2 als Dummy Wert; B * 2 > B -> passt zu Budget Constraint
         # Remove tied values
         for k in range(p):
             unique_values = np.unique(b_matrix[:, k])
@@ -85,18 +83,22 @@ class SCLP:
         return b_sort
     
     #Preliminary Analysis 
-    '''Wenn die Distanz von i zu j größer als r0 ist für die ersten 10 facilites, aber kleiner als r0 für die zweiten 10 facilities, dann ist j in der pre_list enthalten
+    '''
+    Wenn die Distanz von i zu j größer als r0 ist für die ersten 10 facilites, aber kleiner als r0 für die zweiten 10 facilities, dann ist j in der pre_list enthalten
     Die Pre-List speichert nämlich die Indizes der Facilites die bereits 100 Prozent Market share haben (kompletten Demand abgreifen)
     '''
     def pre_analyisis(self, n, d_matrix):
         pre_list = []
         for i in range (n):
             for j in range (10):
-                if d_matrix[i,j] > self.r0:
-                    if d_matrix[i,(j+10)] < self.r0:
-                        pre_list.append(j)
+                if d_matrix[i,j] < self.r0:
+                    if d_matrix[i,(j+10)] > self.r0:
+                        pre_list.append(i)
         return pre_list
     
+    
+    # e[i] is the market share added when demand point i is covered by a single additional chain facility
+    '''Hier ist die Pre-Analysis schon mit drin, da wir nur die e[i] für die Demand Points berechnen, die noch nicht 100 Prozent Market Share haben'''
     def calc_e(self, n, F, C, w):
         e = np.zeros(n)
         for i in range(n):
@@ -108,8 +110,7 @@ class SCLP:
     
     '''Branch and Bound Algorithmus'''
     
-    def calc_upper_bound(self, n, p, b_matrix, e):
-        H = self.B  # Since all distances are integers, the cost for improving a facility is integer thus we set H = B
+    def calc_upper_bound(self, n, p, H, b_matrix, e):
         h = self.B / H
         U = np.zeros((H, p))  # U[h,k] is the upper bound for a remaining budget of h(B/H) available for improving facilities k,...,p
         V = np.zeros((H, p))  # V[h,k] is the additional market share that can be obtained by using a budget h to improve facility k
@@ -131,7 +132,7 @@ class SCLP:
         return U
         
         
-    
+    '''
     def branch_and_bound(self, n, d_matrix, b_matrix, w, F, C, e, U, epsilon):
         p = n
         t = np.zeros(p)
@@ -173,65 +174,30 @@ class SCLP:
         elif B_zero <= self.B:
             h = H * ((self.B - B_zero) / self.B)
             # The Fi and Dk are updated
-            
-        
-   
+            '''
     
-    def build_model(self, filepath):
-        # Initialisieren des CPLEX-Modells
+    def build_model(self, n, p, s, r, w, F, C, d_matrix, b_matrix):
+        # Initialisieren des gurobi - Modells
         mdl = gp.Model("SCLP")
-        
-        n = self.get_n(filepath)
-        p = n
-        r = self.create_r(n)
-
-        
-        init_matrix = self.read_file(filepath, n)
-        d_matrix = self.floyd_warshall(init_matrix, n)
-        b_matrix = self.calc_b(n, p, d_matrix)
         
         # ---Variables---
         x = mdl.addVars(n, p, vtype=GRB.BINARY, name="x")
         y = mdl.addVars(n, p, vtype=GRB.BINARY, name="y")
-
         
-        #Demand 
-        w = np.zeros(n)
-        for i in range(n):
-            w[i] = 1/(i+1)
-        
-        #Indicator Set I
+        #Indicator Set I; Überarbeiten 
         I = [np.nan]*p
         for j in range(p):
             I[j]=[i for i in range(len(d_matrix)) if d_matrix[i, j] > r[j]]
-        
-        F = np.zeros(n)
-        C = np.zeros(n)
-        
-        for i in range (n):
-            for j in range (20):
-                if j < 10:
-                    if d_matrix[i,j] < self.r0:
-                        F[i] += 1
-                else:
-                    if d_matrix[i,j] < self.r0:
-                        C[i] += 1
-            
         
         # ---Objective---
         mdl.setObjective(gp.quicksum((w[i] * C[i] * gp.quicksum(mdl.y[i, j] for j in range(p))) /
                         ((F[i] + C[i]) * (F[i] + C[i] + gp.quicksum(mdl.y[i, j] for j in range(p)))) 
                         for i in range(n)), GRB.MAXIMIZE)
-        
-        #Test Objective
-        #mdl.max(sum(x[i, j] for i in range(n) for j in range(p)))
-        #mdl.setObjective(gp.quicksum(x[i, j] for i in range(n) for j in range(p)), GRB.MAXIMIZE)
 
         # ---Constraints---
         #A.2
         for j in range(p):
             mdl.addConstr(sum(x[i, j] for i in range(n)) <= 1)
-        
         
         #A.3
         for i in range(n):
@@ -240,12 +206,11 @@ class SCLP:
                     d_matrix[i, j] * y[i, j] <= gp.quicksum(d_matrix[k, j] * x[k, j] for k in range(n)),
                     f"constraint_{i}_{j}")
 
-            
         #A.4
         mdl.addConstr(gp.quicksum(b_matrix[i, j] * y[i, j] for i in range(n) for j in range(p)) <= self.B)
         #TODO: define b_matrix function
         
-        #A.5†
+        #A.5
         for i in range(n):
             for j in range(p):
                 if I[j] != i:
@@ -277,6 +242,7 @@ class SCLP:
 
         return mdl 
     
+    
     def get_solution(self, mdl):
         #n = mdl.n
         if mdl.status == GRB.OPTIMAL:
@@ -291,6 +257,7 @@ class SCLP:
             # Keine gültige Lösung gefunden
             return None
     
+    
     def get_objective(self, mdl):
         return mdl.objVal
     
@@ -299,8 +266,42 @@ class SCLP:
         return mdl.report_kpis()
     
     
-    def run(self):
-        mdl = self.build_model(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed1.csv")
+    def run(self, filepath):
+        n = self.get_n(filepath)
+        p = n
+        
+        s = self.create_S(p)
+        r = self.create_r(p)
+        w = np.zeros(n)
+        for i in range(n):
+            w[i] = 1/(i+1)
+            
+        init_matrix = self.read_file(filepath, n)
+        d_matrix = self.floyd_warshall(init_matrix, n)
+        
+        # Hier arbeiten mit der pre_analysis -> n und d verkleinern und dann mit den neuen Matrizen arbeiten -> Laufzeit verbessern?
+        pre_list = self.pre_analyisis(n, d_matrix)
+        n = n - len(pre_list)
+        d_matrix = np.delete(d_matrix, pre_list, 0)
+        
+        b_matrix = self.calc_b(n, p, s, r, d_matrix)
+        
+        F = np.zeros(n)
+        C = np.zeros(n)
+        for i in range (n):
+            for j in range (20):
+                if j < 10:
+                    if d_matrix[i,j] < self.r0:
+                        F[i] += 1
+                else:
+                    if d_matrix[i,j] < self.r0:
+                        C[i] += 1
+            
+        e = self.calc_e(n, F, C, w)
+        
+        H = self.B  # Since all distances are integers, the cost for improving a facility is integer thus we set H = B
+        
+        mdl = self.build_model(n, p, s, r, w, F, C, d_matrix, b_matrix)
         mdl = self.solve_model(mdl)
         #x, y = self.get_solution(mdl)
         obj = self.get_objective(mdl)
@@ -309,7 +310,9 @@ class SCLP:
         #print("y: ", y)
         print("obj: ", obj)
         #print("kpis: ", kpis)
-       # return x, y, obj, kpis
+        #return x, y, obj, kpis
         return obj
 
-SCLP(20,5000,500,0).run()
+
+
+SCLP(20,5000,500,0).run(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed1.csv")
