@@ -1,14 +1,9 @@
-import gurobipy as gp
-from gurobipy import GRB
 import pandas as pd
 import numpy as np
-# Gurobi benötigt keinen direkten Ersatz für LinearRelaxer
-# Konfliktlösung in Gurobi erfolgt anders, daher wird dieser Import entfernt
-# Gurobi hat eigene Methoden für den Fortschrittslistener
 
 
 class SCLP:
-    def __init__(self,r0, B, S_existing, S_new):
+    def __init__(self, r0, B, S_existing, S_new):
         self.r0 = r0                    #coverage Radius
         self.B = B                      #budget
         self.S_existing = S_existing    #fixed costs of upgrading existing facilities
@@ -73,14 +68,16 @@ class SCLP:
                         b_matrix[i, k] = 0
                 else:
                     b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(r[k]) + s[k]
-
-        b_sort = np.full((p, n), (self.B * 2))                #Verwernde B * 2 als Dummy Wert; B * 2 > B -> passt zu Budget Constraint
+                    
         # Remove tied values
+        B_dict = {}
         for k in range(p):
             unique_values = np.unique(b_matrix[:, k])
-            b_sort[k, :len(unique_values)] = unique_values
-
-        return b_sort
+            if 0 not in unique_values:
+                unique_values = np.append(0)
+            sorted_values = np.sort(unique_values)
+            B_dict[f'B_{k}'] = sorted_values
+        return B_dict
     
     #Preliminary Analysis 
     '''
@@ -92,8 +89,9 @@ class SCLP:
         for i in range (n):
             for j in range (10):
                 if d_matrix[i,j] < self.r0:
-                    if d_matrix[i,(j+10)] > self.r0:
-                        pre_list.append(i)
+                    for k in range(10,19):
+                        if d_matrix[i,k] > self.r0:
+                            pre_list.append(i)
         return pre_list
     
     
@@ -117,178 +115,94 @@ class SCLP:
 
         # Step 1: Calculation of V
         for k in range(p):
-            for h in range(H):
-                V[h, k] = 0
+            #for h in range(H):
+                #V[h, k] = 0
             for i in range(n):
                 if b_matrix[i, k] > 0:
                     if h >= b_matrix[i, k]:
                         V[:, k] += e[i]
 
         # Step 2: Calculation of U
-        for k in range((p - 1), 0, -1):
+        U[:, p - 1] = V[:, p - 1]
+        for k in range((p - 2), 0, -1):
             for h in range(H):
                 U[h, k] = max([V[s, k] + U[h - s, k + 1] for s in range(h)])
 
         return U
         
+    def BandB_2(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e):
+        if delta[k] + U[h, (k + 1)] <= D_Star + epsilon:
+            print("Fathomed")  
+            self.BandB_4(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e)
+        else:
+            pass
         
-    '''
-    def branch_and_bound(self, n, d_matrix, b_matrix, w, F, C, e, U, epsilon):
-        p = n
-        t = np.zeros(p)
-        B_zero = 0
-        delta = np.zeros(p)
-        D_Star = 0
-        H = self.B
-        h = H * ((self.B - B_zero) / self.B)
-        
-        #Step 1 of Branch and Bound Algorithm
-        
-        U = self.calc_upper_bound(n, p, b_matrix, e)
-        k = 0
-        t[k] = 1
-        delta[k] = 0
-        
-        #Step 2 of Branch and Bound Algorithm - Check if Node is to fathom
-        
-       # if delta[k] + U[h,(k+1)] <= D_Star + epsilon:
-        
-        #Step 3 of Branch and Bound Algorithm
-        k += 1
+    def BandB_3(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e):
         if k == p:
             # calc market share
-            a = 0
+            b_hilf = sum(b_matrix[t[j], j] for j in range(p))
+            B_zero = self.B - b_hilf
+            #Calculate extra marketshare
+            #check e[t[j]] for j in range(p)
+            #update D_Star if necessary
+            k = p - 1
+            self.BandB_4(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e)
         elif k < p:
             t[k] = 1
-        
-        #Step 4 of Branch and Bound Algorithm
+            self.BandB_2(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e)
+            
+    def BandB_4(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e):
         t[k] = t[k] + 1
         B_zero = B_zero + b_matrix[t[k], k] - b_matrix[t[k] - 1, k]
+    
         if B_zero > self.B:
             k = k - 1
             if k > 0:
-                a=0
-                # Go to Step 4
+                self.BandB_4(k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e)
             elif k == 0:
-                return D_Star
+                print("Optimale Lösung gefunden\n")
+                print("Optimales Delta: ", D_Star)
         elif B_zero <= self.B:
-            h = H * ((self.B - B_zero) / self.B)
-            # The Fi and Dk are updated
-            '''
-    
-    def build_model(self, n, p, s, r, w, F, C, d_matrix, b_matrix):
-        # Initialisieren des gurobi - Modells
-        mdl = gp.Model("SCLP")
-        
-        # ---Variables---
-        x = mdl.addVars(n, p, vtype=GRB.BINARY, name="x")
-        y = mdl.addVars(n, p, vtype=GRB.BINARY, name="y")
-        
-        #Indicator Set I; Überarbeiten 
-        I = [np.nan]*p
-        for j in range(p):
-            I[j]=[i for i in range(len(d_matrix)) if d_matrix[i, j] > r[j]]
-        
-        # ---Objective---
-        mdl.setObjective(gp.quicksum((w[i] * C[i] * gp.quicksum(mdl.y[i, j] for j in range(p))) /
-                        ((F[i] + C[i]) * (F[i] + C[i] + gp.quicksum(mdl.y[i, j] for j in range(p)))) 
-                        for i in range(n)), GRB.MAXIMIZE)
+            h = np.ceil(self.H * ((self.B - B_zero) / self.B))
+            # Aktualisierung von delta[k]
+            # Hier sollten Sie die spezifische Logik einfügen, wie delta[k] basierend auf den aktuellen Entscheidungen berechnet wird.
+            # Zum Beispiel könnte delta[k] basierend auf der Veränderung des Marktanteils aktualisiert werden.
+            # delta[k] = ...
 
-        # ---Constraints---
-        #A.2
-        for j in range(p):
-            mdl.addConstr(sum(x[i, j] for i in range(n)) <= 1)
-        
-        #A.3
-        for i in range(n):
-            for j in range(p):
-                mdl.addConstr(
-                    d_matrix[i, j] * y[i, j] <= gp.quicksum(d_matrix[k, j] * x[k, j] for k in range(n)),
-                    f"constraint_{i}_{j}")
+            # Aktualisierung von D_Star, falls notwendig
+            if delta[k] > D_Star:
+                D_Star = delta[k]
+                print("Neue beste Lösung: ", D_Star)
 
-        #A.4
-        mdl.addConstr(gp.quicksum(b_matrix[i, j] * y[i, j] for i in range(n) for j in range(p)) <= self.B)
-        #TODO: define b_matrix function
-        
-        #A.5
-        for i in range(n):
-            for j in range(p):
-                if I[j] != i:
-                    mdl.addConstr(y[i, j] == 0)
-        
-        return mdl
-    
-    
-    def solve_model(self, mdl):
-        # Das Modell lösen
-        mdl.optimize()
-
-        # Prüfen, ob eine Lösung gefunden wurde
-        if mdl.status == GRB.OPTIMAL:
-            # Ergebnisse ausgeben
-           # for v in mdl.getVars():
-            #    print(f"{v.varName} = {v.x}")
-
-            # Objektivwert ausgeben
-            print(f"Optimaler Zielfunktionswert: {mdl.objVal}")
-        elif mdl.status == GRB.INF_OR_UNBD:
-            print("Modell ist unbeschränkt oder unzulässig.")
-        elif mdl.status == GRB.INFEASIBLE:
-            print("Modell ist unzulässig.")
-        elif mdl.status == GRB.UNBOUNDED:
-            print("Modell ist unbeschränkt.")
-        else:
-            print(f"Optimierung wurde mit Status {mdl.status} beendet.")
-
-        return mdl 
-    
-    
-    def get_solution(self, mdl):
-        #n = mdl.n
-        if mdl.status == GRB.OPTIMAL:
-            # Erstellen eines Wörterbuchs für die Lösungswerte
-            solution = {}
-            for v in mdl.getVars():
-                solution[v.varName] = v.x  # Speichern des Wertes der Variablen
-
-            # Ausgabe des Lösungswörterbuchs
-            return solution
-        else:
-            # Keine gültige Lösung gefunden
-            return None
-    
-    
-    def get_objective(self, mdl):
-        return mdl.objVal
-    
-    
-    def get_kpis(self, mdl):
-        return mdl.report_kpis()
-    
+        # Hier sollten Sie weitere Logik für die Aktualisierung von F[i] und den Übergang zu anderen Schritten einfügen
     
     def run(self, filepath):
-        n = self.get_n(filepath)
-        p = n
+        n_0 = self.get_n(filepath)
+        n = [None] * n_0
+        p = [None] * n_0
+        for i in range(n_0):
+            n[i] = i
+            p[i] = i
         
         s = self.create_S(p)
         r = self.create_r(p)
-        w = np.zeros(n)
-        for i in range(n):
+        w = np.zeros(n_0)
+        for i in range(n_0):
             w[i] = 1/(i+1)
             
-        init_matrix = self.read_file(filepath, n)
-        d_matrix = self.floyd_warshall(init_matrix, n)
+        init_matrix = self.read_file(filepath, n_0)
+        d_matrix = self.floyd_warshall(init_matrix, n_0)
         
         # Hier arbeiten mit der pre_analysis -> n und d verkleinern und dann mit den neuen Matrizen arbeiten -> Laufzeit verbessern?
-        pre_list = self.pre_analyisis(n, d_matrix)
-        n = n - len(pre_list)
+        pre_list = self.pre_analyisis(len(n), d_matrix)
+        n = [x for x in n if x not in pre_list]
+        # Überlegen was mit d passiert
         d_matrix = np.delete(d_matrix, pre_list, 0)
-        
         b_matrix = self.calc_b(n, p, s, r, d_matrix)
         
-        F = np.zeros(n)
-        C = np.zeros(n)
-        for i in range (n):
+        F = np.zeros(n_0)
+        C = np.zeros(n_0)
+        for i in range (n_0):
             for j in range (20):
                 if j < 10:
                     if d_matrix[i,j] < self.r0:
@@ -301,17 +215,26 @@ class SCLP:
         
         H = self.B  # Since all distances are integers, the cost for improving a facility is integer thus we set H = B
         
-        mdl = self.build_model(n, p, s, r, w, F, C, d_matrix, b_matrix)
-        mdl = self.solve_model(mdl)
-        #x, y = self.get_solution(mdl)
-        obj = self.get_objective(mdl)
-        #kpis = self.get_kpis(mdl)
-        #print("x: ", x)
-        #print("y: ", y)
-        print("obj: ", obj)
-        #print("kpis: ", kpis)
-        #return x, y, obj, kpis
-        return obj
+        epsilon = 0.00001
+        
+        #First Step Branch and Bound
+        t = np.zeros(len((p)))
+        B_zero = 0
+        delta = np.zeros(len((p)))
+        D_Star = 0
+        h = np.ceil(H * ((self.B - B_zero) / self.B))
+        
+        k = 1
+        t[k] = 1
+        U = self.calc_upper_bound(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h)
+        
+        #Branch and Bound Steps mit Querverlinkung
+        #If delta[k] + U[h, (k + 1)] <= D_Star + epsilon, the rest of the tree from this node is fathomed. Go to BandB_4
+        self.BandB_2(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h)
+        
+        
+        
+        
 
 
 
