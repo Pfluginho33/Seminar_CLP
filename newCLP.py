@@ -68,8 +68,10 @@ class SCLP:
                         b_matrix[i, k] = 0
                 else:
                     b_matrix[i, k] = self.calc_f(d_matrix[i, k]) - self.calc_f(r[k]) + s[k]
-                    
-        # Remove tied values
+        return b_matrix
+    
+    # Remove tied values
+    def create_B_dict(self, b_matrix, p):            
         B_dict = {}
         for k in range(p):
             unique_values = np.unique(b_matrix[:, k])
@@ -78,6 +80,23 @@ class SCLP:
             sorted_values = np.sort(unique_values)
             B_dict[f'B_{k}'] = sorted_values
         return B_dict
+    
+    def get_i(b_matrix, B_dict, x, k):
+        # Überprüfen, ob k in B_dict und in den Grenzen von b_matrix liegt
+        if f'B_{k}' not in B_dict or k >= b_matrix.shape[1]:
+            return "Ungültiger Spaltenindex"
+
+        # Überprüfen, ob x im entsprechenden Array in B_dict enthalten ist
+        if x not in B_dict[f'B_{k}']:
+            return "Wert nicht im B_dict gefunden"
+
+        # Suche nach dem Wert x in der k-ten Spalte der b_matrix
+        for i in range(b_matrix.shape[0]):
+            if b_matrix[i, k] == x:
+                return i
+
+        return "Wert nicht in der b_matrix gefunden"
+
     
     #Preliminary Analysis 
     '''
@@ -129,52 +148,60 @@ class SCLP:
                 U[h, k] = max([V[s, k] + U[h - s, k + 1] for s in range(h)])
 
         return U
-        
-    def BandB_2(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e):
-        if delta[k] + U[h, (k + 1)] <= D_Star + epsilon:
-            print("Fathomed")  
-            self.BandB_4(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e)
-        else:
-            pass
-        
-    def BandB_3(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e):
-        if k == p:
-            # calc market share
-            b_hilf = sum(b_matrix[t[j], j] for j in range(p))
-            B_zero = self.B - b_hilf
-            #Calculate extra marketshare
-            #check e[t[j]] for j in range(p)
-            #update D_Star if necessary
-            k = p - 1
-            self.BandB_4(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e)
-        elif k < p:
-            t[k] = 1
-            self.BandB_2(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e)
-            
-    def BandB_4(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e):
-        t[k] = t[k] + 1
-        B_zero = B_zero + b_matrix[t[k], k] - b_matrix[t[k] - 1, k]
     
-        if B_zero > self.B:
-            k = k - 1
-            if k > 0:
-                self.BandB_4(k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h, e)
-            elif k == 0:
-                print("Optimale Lösung gefunden\n")
-                print("Optimales Delta: ", D_Star)
-        elif B_zero <= self.B:
-            h = np.ceil(self.H * ((self.B - B_zero) / self.B))
-            # Aktualisierung von delta[k]
-            # Hier sollten Sie die spezifische Logik einfügen, wie delta[k] basierend auf den aktuellen Entscheidungen berechnet wird.
-            # Zum Beispiel könnte delta[k] basierend auf der Veränderung des Marktanteils aktualisiert werden.
-            # delta[k] = ...
+    def Branch_and_Bound(self, k, p, t, B_zero, b_matrix, B_dict, delta, D_Star, epsilon, U, h, e):
+        
+        fathomed_nodes = []  # Initialize the fathomed_nodes list
 
-            # Aktualisierung von D_Star, falls notwendig
-            if delta[k] > D_Star:
-                D_Star = delta[k]
-                print("Neue beste Lösung: ", D_Star)
+        # Check if Node is to fathom
+        def BandB_2():
+            if delta[k] + U[h, (k + 1)] <= D_Star + epsilon:
+                print("Fathomed")  
+                fathomed_nodes.append(k)
+                BandB_4()
+            else:
+                BandB_3()
+        
+        def BandB_3():
+            k += 1
+            if k == p:
+                # calc market share
+                b_hilf = sum(b_matrix[t[j], j] for j in range(p))
+                B_zero = self.B - b_hilf
+                #Calculate extra marketshare
+                #check e[t[j]] for j in range(p)
+                #update D_Star if necessary
+                k = p - 1
+                BandB_4()
+            elif k < p:
+                t[k] = 1
+                BandB_2()
+            
+        def BandB_4():
+            t[k] = t[k] + 1
+            B_zero = B_zero + b_matrix[t[k], k] - b_matrix[t[k] - 1, k]
+    
+            if B_zero > self.B:
+                k = k - 1
+                if k > 0:
+                    BandB_4()
+                elif k == 0:
+                    print("Optimale Lösung gefunden\n")
+                    print("Optimales Delta: ", D_Star)
+            elif B_zero <= self.B:
+                h = np.ceil(self.H * ((self.B - B_zero) / self.B))
+                # Aktualisierung von delta[k]
+                # Hier sollten Sie die spezifische Logik einfügen, wie delta[k] basierend auf den aktuellen Entscheidungen berechnet wird.
+                # Zum Beispiel könnte delta[k] basierend auf der Veränderung des Marktanteils aktualisiert werden.
+                # delta[k] = ...
 
-        # Hier sollten Sie weitere Logik für die Aktualisierung von F[i] und den Übergang zu anderen Schritten einfügen
+                # Aktualisierung von D_Star, falls notwendig
+                if delta[k] > D_Star:
+                    D_Star = delta[k]
+                    print("Neue beste Lösung: ", D_Star)
+                BandB_2()
+
+            
     
     def run(self, filepath):
         n_0 = self.get_n(filepath)
@@ -197,9 +224,9 @@ class SCLP:
         pre_list = self.pre_analyisis(len(n), d_matrix)
         n = [x for x in n if x not in pre_list]
         # Überlegen was mit d passiert
-        d_matrix = np.delete(d_matrix, pre_list, 0)
+        #d_matrix = np.delete(d_matrix, pre_list, 0)
         b_matrix = self.calc_b(n, p, s, r, d_matrix)
-        
+        B_dict = self.create_B_dict(b_matrix, n_0)
         F = np.zeros(n_0)
         C = np.zeros(n_0)
         for i in range (n_0):
@@ -224,13 +251,14 @@ class SCLP:
         D_Star = 0
         h = np.ceil(H * ((self.B - B_zero) / self.B))
         
+        U = self.calc_upper_bound(self, n, p, H, b_matrix, e)
         k = 1
         t[k] = 1
-        U = self.calc_upper_bound(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h)
+       
         
         #Branch and Bound Steps mit Querverlinkung
         #If delta[k] + U[h, (k + 1)] <= D_Star + epsilon, the rest of the tree from this node is fathomed. Go to BandB_4
-        self.BandB_2(self, k, p, t, B_zero, b_matrix, delta, D_Star, epsilon, U, h)
+        self.Branch_and_Bound(self, k, p, t, B_zero, b_matrix, B_dict, delta, D_Star, epsilon, U, h, e)
         
         
         
