@@ -369,14 +369,6 @@ class SCLP:
         b_matrix = self.calc_b(n, p, s, r, d_matrix)        #b_matrix is the cost matrix (how much budjet need to be spend to improve a facility j to include demand point i)
         B_dict = self.create_B_dict(b_matrix, n)            #B_dict is a dictionary that includes the possible (unique) values for each column of b_matrix in a sorted manner
         b_index = self.create_index_dict(b_matrix)          #b_index is a dictionary that includes the indices of the values in b_matrix that are equal to the values in B_dict
-        '''
-        print ("d_",99,": ",d_matrix[99])
-        print ("b_(spalte)",99,": ",b_matrix[:,99])
-        print ("B_dict_",99,": ",B_dict[99])
-        print ("B_dict 99,4: ", B_dict[99][4].item())
-        print("B_index: ", b_index[99])                               #b_index beinhaltet weitere arrays und nicht direct integers.
-        print("B_index: 99,19 ", b_index[99][19][0])
-           ''' 
         
         F = np.zeros(n, dtype=int)
         C = np.zeros(n, dtype=int)
@@ -406,18 +398,6 @@ class SCLP:
         #print (U)
         #print("starte B and B")
         self.Branch_and_Bound(n, p, b_matrix, B_dict, b_index, D_Star, epsilon, U, H, F, C, w, fathomed_dict, current_best)
-        '''
-        print (d_matrix[4])
-        print (b_matrix[:,4])
-        print (B_dict[4])
-        print ("b_ind_4",b_index[4], "\n")
-        print ("b_ind_11" ,b_index[11], "\n")
-        print ("b_ind_99" ,b_index[99], "\n")
-        '''
-        
-        
-    
-        
        
 
 
