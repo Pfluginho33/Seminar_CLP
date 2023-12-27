@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-import random
 import pandas as pd
 import numpy as np
 import torch
@@ -150,8 +149,8 @@ class SCLP:
     # Speichern des DataFrame als CSV-Datei
         df.to_csv(filename, index=False)
 
-    '''
-    def calc_upper_bound(self, n, p, H, b_matrix, e):
+    
+    '''def calc_upper_bound(self, n, p, H, b_matrix, e):
         h = np.ceil(self.B / H)
         U = torch.zeros((H, p))  # U[h,k] is the upper bound for a remaining budget of h(B/H) available for improving facilities k,...,p
         V = torch.zeros((H, p))  # V[h,k] is the additional market share that can be obtained by using a budget h to improve facility k
@@ -175,11 +174,11 @@ class SCLP:
             for h in range (H-1, -1, -1):
                 U[h, k] = max(V[s, k] + U[h-s, k+1] for s in range(h+1))
                 
-            
         print (U)
-        self.save_tensor_as_csv(U, "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U.csv")
+        self.save_tensor_as_csv(U, "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-2.csv")
         #print("U saved")
         return U
+    
     '''
     def calc_upper_bound(self, filepath):
         file = pd.read_csv(filepath, header = None, sep=",",decimal=".", dtype=float, skiprows=1)
@@ -212,54 +211,54 @@ class SCLP:
             self.BandB_3(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, fathomed_dict, current_best, delta_k, iterator, indices, q)
     
     def BandB_3(self, n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, fathomed_dict, current_best, delta_k, iterator, indices, q):
-        #if iterator == 0:
-        print("\n", "BandB_3")
-        k += 1
-        print ("B_B3_k: ", k)
-        if k == p-1:
-            #iterator += 1
-            #Find out which is the maximum possible invest for facility p which is smaller than the budget
-            y = 0
-            invest_p = True
-            while invest_p == True:
-                y += 1
-                a = B_dict[p-1][y]
-                if a <= (self.B - B_zero):
-                    invest_p = True
-                    invest_help = True
-                else:
-                    invest_p = False
-                    y = y - 1
-                
-            if invest_help == True:
-                B_zero = B_zero + B_dict[p-1][y]
-                print ("B_B3_B_zero: ", B_zero, "\n")
-                print ("Budget für p: ", B_dict[p-1][y], "\n")
-                print ("Nächste Stufe :", B_dict[p-1][y+1], "\n")
-                
-                    #Get the indices of the values in b_matrix that are equal to the values in B_dict[p-1] from 0 to y
-                indices_new = self.get_index_list(b_index, p-1, y)
-                for i in indices_new:
-                #x = int(indices_new[i])
-                    indices.append(i)
-                print ("Indices: ", indices, "\n")
-                
-                # Calculate of additional chain facilities attracting demand point i - > q[i]
-                for i in indices:
-                    q[i] += 1
-                t[p-1] = y
-                # Calculate the market share for each demand point i
-                delta_k_2 = self.calc_new_marektshare(q, w, F, C, n)
-                delta_k = delta_k + delta_k_2
-                print (delta_k)
-                if delta_k > D_Star:
-                    D_Star = delta_k
-                    current_best = t
-                    print(D_Star)
-                    print("New best solution: ", current_best)
-                    k = p - 2
-                    self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, fathomed_dict, current_best, delta_k, iterator, indices, q)
-                
+        if iterator == 0:
+            print("\n", "BandB_3")
+            k += 1
+            print ("B_B3_k: ", k)
+            if k == p-1:
+                iterator += 1
+                #Find out which is the maximum possible invest for facility p which is smaller than the budget
+                y = 0
+                invest_p = True
+                while invest_p == True:
+                    y += 1
+                    a = B_dict[p-1][y]
+                    if a <= (self.B - B_zero):
+                        invest_p = True
+                        invest_help = True
+                    else:
+                        invest_p = False
+                        y = y - 1
+                    
+                if invest_help == True:
+                    B_zero = B_zero + B_dict[p-1][y]
+                    print ("B_B3_B_zero: ", B_zero, "\n")
+                    print ("Budget für p: ", B_dict[p-1][y], "\n")
+                    print ("Nächste Stufe :", B_dict[p-1][y+1], "\n")
+                    
+                        #Get the indices of the values in b_matrix that are equal to the values in B_dict[p-1] from 0 to y
+                    indices_new = self.get_index_list(b_index, p-1, y)
+                    for i in indices_new:
+                    #x = int(indices_new[i])
+                        indices.append(i)
+                    print ("Indices: ", indices, "\n")
+                    
+                    # Calculate of additional chain facilities attracting demand point i - > q[i]
+                    for i in indices:
+                        q[i] += 1
+                    t[p-1] = y
+                    # Calculate the market share for each demand point i
+                    delta_k_2 = self.calc_new_marektshare(q, w, F, C, n)
+                    delta_k = delta_k + delta_k_2
+                    print (delta_k)
+                    if delta_k > D_Star:
+                        D_Star = delta_k
+                        current_best = t
+                        print(D_Star)
+                        print("New best solution: ", current_best)
+                        k = p - 2
+                        self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, fathomed_dict, current_best, delta_k, iterator, indices, q)
+                    
             elif k < p:
                 t[k] = 0
                 self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, fathomed_dict, current_best, delta_k, iterator, indices, q)
@@ -293,6 +292,7 @@ class SCLP:
                 self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, fathomed_dict, current_best, delta_k, iterator, indices, q)
             elif k == 0:
                 current_best = t
+                print ("current_best: ", current_best)
                 print("Optimale Lösung gefunden\n")
                 #print("Optimales Delta: ", D_Star)
                 self.solution(D_Star, current_best, B_dict)
@@ -338,6 +338,7 @@ class SCLP:
     
     def Branch_and_Bound(self, n, p, b_matrix, B_dict, b_index, D_Star, epsilon, U, H, F, C, w, fathomed_dict, current_best):
         # Step 1: Initialization
+        print ("Branch_and_Bound" , p)
         t = np.zeros(p, dtype = int)    # t is the vector of decisions  t[0] = 0 means that B_dict[f'B_{0}'][0] is chosen
         k = 0                           # k is the index of the current facility
         #t[k] = 0                        # t[k] is the index of the current value of the k-th facility
