@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-import pandas as pd
 import time
 import os
 import psutil
@@ -13,6 +12,7 @@ class SCLP:
         self.S_existing = S_existing    # fixed costs of upgrading existing facilities
         self.S_new = S_new              # fixed costs of building new facilities
         self.nodes = 0                  # number of nodes visited
+        self.H=B
         
     def get_n(self, filename):
         with open(filename, 'r') as file:
@@ -157,7 +157,7 @@ class SCLP:
             print (k)
             for h in range (H, -1, -1):
                 U[h][k] = max(U[s][k] + U[h-s][k+1] for s in range(h+1))
-        with open('/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U.csv', 'w', newline='') as file:
+        with open('/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-8.csv', 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerows(U)
         
@@ -183,98 +183,85 @@ class SCLP:
         return indices
     
     # Check if Node is to fathom
-    def BandB_2(self, n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q):
-        print("BandB_2")
-        '''print ("B_B2_h: ", h)
-        print ("B_B2_k: ", k)
-        print ("B_B2_delta_k: ",  delta_k)
-        print ("B_B2_D_Star: ", D_Star)
-        print ("B_B2_U[h-1, k]: ", U[h][k+1])'''
-        iterator += 1
-        print ("B_B2_iterator: ", iterator)
-        
-        
-        if delta_k + U[h][k+1] <= D_Star + epsilon:
-            print ("Fathomed")
-            self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q)
+    def BandB_2(self, n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star,  U, h, F, C, w, current_best, delta_k, indices, q):
+        print("BandB_2", "k: ", k, "h: ", h, "B_zero: ", B_zero, "D_Star: ", D_Star, "delta_k: ", delta_k)
+        if delta_k + U[h][k+1] <= D_Star + 0.00001 :
+            #print ("Fathomed")
+            self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
         else:
-            print("Continue with 2 -> 3")
-            self.BandB_3(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q)
+            self.BandB_3(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
     
-    def BandB_3(self, n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q):
+    def BandB_3(self, n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q):
+        print("BandB_3", "k: ", k, "h: ", h, "B_zero: ", B_zero, "D_Star: ", D_Star, "delta_k: ", delta_k)
         self.nodes += 1
         k = k + 1
-        print("Schritt 0")
-        print (k)
-        print (p)
-        if k == 99:
-            print ("B_zero: ", B_zero)
-            print("Schritt 1")
-            #Calculate the extra market share by using self.B - B_Zero to expand facility
-            y = 0
-            invest_p = True
-            invest_help = False
-            while invest_p == True:
-                y += 1
-                a = B_dict[p-1][y]
-                if a <= (self.B - B_zero):
-                    invest_p = True
-                    invest_help = True
-                else:
-                    invest_p = False
-                    y = y - 1
-            if invest_help == True:
-                B_zero_help = B_zero + B_dict[p-1][y]
-                indices_new = self.get_index_list(b_index, p-1, y)
-                for i in indices_new:
-                    q[i] += 1
-                #t[p-1] = y
-                # Calculate the market share
-                new_market_share = self.calc_new_marektshare(q, w, F, C, n)
-                q = [0 for _ in range(n)]
-                if new_market_share > D_Star:
-                    D_Star = new_market_share
-            t[p-1] = 0
+        if k == p-1:
+            b = self.B - B_zero
+            print ("Für p zur Verfügung: ", b)
+            x = 0
+            for y in range(len(B_dict[k])):
+                if B_dict[k][y] <= b:
+                    x = y
+                elif B_dict[k][y] > b:
+                    break
+            print(x)
+            test_list = t.copy()
+            test_list[k] = x
+            ind_new = self.get_index_list(b_index, k, x)
+            print("ind_new: ", ind_new)
+            q_help = [0 for _ in range(n)]
+            for i in ind_new:
+                q_help[i] = 1
+            new_share = self.calc_new_marektshare(q_help, w, F, C, n)
+            new_share = new_share + delta_k
+            
+            if new_share > D_Star:
+                D_Star = new_share
+            
             k = p - 2
-            self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q)
-        elif k < p-1: 
+            self.BandB_4(n, p, test_list, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, new_share, indices, q)
+        elif k < p - 1:
             t[k] = 0
-            self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q)
+            self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
     
-    def BandB_4(self, n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q):
+    def BandB_4(self, n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q):
+        print("BandB_4", "k: ", k, "h: ", h, "B_zero: ", B_zero, "D_Star: ", D_Star, "delta_k: ", delta_k)
         self.nodes += 1
-        t[k] += 1
-        B_zero = B_zero = B_zero + B_dict[k][t[k]] - B_dict[k][t[k] - 1]
+        t[k] = t[k] + 1
+        B_zero = B_zero + B_dict[k][t[k]] - B_dict[k][t[k]-1]
+        
         if B_zero > self.B:
-            B_zero = B_zero - B_dict[k][t[k]] + B_dict[k][t[k] - 1]
-            t[k] -= 1
+            print("Zurück")
+            B_zero = B_zero - B_dict[k][t[k]] + B_dict[k][t[k]-1]
+            t[k] = t[k] - 1
             k = k - 1
             if k >= 0:
-                self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q)
+                self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
             elif k == -1:
-                self.solution(D_Star, current_best, B_dict, b_index,q,F,w,C,n)
-        elif B_zero <= self.B:
-            print (t)
-            H = self.B
-            h = int(math.ceil(H * ((self.B - B_zero) / self.B)))
-            indices_new = self.get_index_list(b_index, k, t[k])
-            for i in indices_new:
-                indices.append(i)
-            for i in indices:
-                q[i] += 1
-            delta_k = self.calc_new_marektshare(q, w, F, C, n)
-            '''for i in range(n):
-                F[i] = F[i] + q[i]
-                q[i] = 0'''
-            
-            self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q)
+                print("solution")
+                print(current_best)
+                print(self.nodes)
+                print(D_Star)
         
-    def solution(self, D_Star, current_best, B_dict, b_index,q,F,w,C,n):
+        elif B_zero <= self.B:
+            h = math.ceil(self.H * ((self.B - B_zero) / self.B))
+            print ("B_zero: ", B_zero , "<= self.B, h: ", h)
+            ind_new = self.get_index_list(b_index, k, t[k])
+            for i in ind_new:
+                q[i] = 1
+            delta_k = self.calc_new_marektshare(q, w, F, C, n)
+            current_best[k] = t[k]
+            print("delta_k durch baustufe",t[k], "für facility", k ,": ", delta_k)
+            self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
+                               
+        
+    def solution(self, D_Star, current_best, B_dict, b_index, q, F, w, C, n, delta_k):
         print("solution")
         print(q)
         print(F)
         delta = self.calc_new_marektshare(q, w, F, C, n)
         print(delta)
+        print(delta_k)
         print(self.nodes)
         print("Optimale Lösung: ", D_Star)
         '''print("Es werden folgende Facilites gebaut: ")
@@ -283,20 +270,18 @@ class SCLP:
                 print("Facility ", j, " wird gebaut mit dem Budget ", B_dict[j][current_best[j]])'''
         
     
-    def Branch_and_Bound(self, n, p, b_matrix, B_dict, b_index, D_Star, epsilon, U, H, F, C, w, current_best):
+    def Branch_and_Bound(self, n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best):
         # Step 1: Initialization
-        print ("Branch_and_Bound" , p)
-        t = [0 for _ in range(n)]       # t is the vector of decisions  t[0] = 0 means that B_dict[f'B_{0}'][0] is chosen
-        k = 0                           # k is the index of the current facility
-        B_zero = 0                      # B_zero is the used budget so far
-        delta_k = 0                     # delta_k is the market share so far
-        iterator = 0
+        #print ("Branch_and_Bound" , p)
+        t = [0 for _ in range(p)]           # t is the vector of decisions  t[0] = 0 means that B_dict[f'B_{0}'][0] is chosen
+        k = 0                               # k is the index of the current facility
+        B_zero = 0                          # B_zero is the used budget so far
+        delta_k = 0                         # delta_k is the market share so far
         indices = []
         q = [0 for _ in range(n)]
-        h = int(math.ceil(H * ((self.B - B_zero) / self.B)))
-        
+        h = int(math.ceil(self.H * ((self.B - B_zero) / self.B)))
         print("LetsGO!")
-        self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, epsilon, U, h, F, C, w, current_best, delta_k, iterator, indices, q)
+        self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
         
             
     
@@ -330,20 +315,14 @@ class SCLP:
                     if d_matrix[i][j] < self.r0:
                         C[i] += 1                   #if the distance from i to j is smaller than r0, then the demand point i is covered by competitor facility j -> C[i] += 1
         
-        
-        
-        
         e = self.calc_e(n, F, C, w)
    
-        H = self.B              # Since all distances are integers, the cost for improving a facility is integer thus we set H = B
-        epsilon = 0.00001       # the tolerance eplsilon is set to 0.00001 accoring to the paper
-        
         #Step 0 Branch and Bound
         current_best = [0 for _ in range(n)]       #the current best list will include the best solution so far
         D_Star = 0              #D_Star is the best solution so far 'measured in' extra market share
         #U = self.calc_upper_bound(n, p, self.B, b_matrix, e)
-        U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U.csv")
-        self.Branch_and_Bound(n, p, b_matrix, B_dict, b_index, D_Star, epsilon, U, H, F, C, w, current_best)
+        U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-1.csv")
+        self.Branch_and_Bound(n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best)
         end_time = time.time()
         execution_time = end_time - start_time
         
