@@ -101,9 +101,9 @@ class SCLP:
                 grouped_indices.append([sorted_indices[i]])
         return grouped_indices
     
-    def calc_new_marektshare (self, q, w, F, C, n):
+    def calc_new_marektshare (self, q, w, F, C, k):
         delta = 0
-        for i in range (n):
+        for i in range (k):
             if F[i] + C[i] > 0:
                 delta += w[i] * ((q[i] * C[i]) / ((F[i] + C[i]) * (F[i] + C[i] + q[i])))
             elif F[i] + C[i] == 0:
@@ -205,21 +205,21 @@ class SCLP:
                 elif B_dict[k][y] > b:
                     break
             print(x)
-            test_list = t.copy()
-            test_list[k] = x
+            t[k] = x
             ind_new = self.get_index_list(b_index, k, x)
             print("ind_new: ", ind_new)
             q_help = [0 for _ in range(n)]
             for i in ind_new:
                 q_help[i] = 1
             new_share = self.calc_new_marektshare(q_help, w, F, C, n)
-            new_share = new_share + delta_k
+            #new_share = new_share + delta_k
             
             if new_share > D_Star:
                 D_Star = new_share
+                current_best = t
             
             k = p - 2
-            self.BandB_4(n, p, test_list, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, new_share, indices, q)
+            self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, new_share, indices, q)
         elif k < p - 1:
             t[k] = 0
             self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
@@ -238,10 +238,7 @@ class SCLP:
             if k >= 0:
                 self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
             elif k == -1:
-                print("solution")
-                print(current_best)
-                print(self.nodes)
-                print(D_Star)
+                self.solution(D_Star, current_best, B_dict, b_index, q, F, w, C, n, delta_k)
         
         elif B_zero <= self.B:
             h = math.ceil(self.H * ((self.B - B_zero) / self.B))
@@ -250,24 +247,23 @@ class SCLP:
             for i in ind_new:
                 q[i] = 1
             delta_k = self.calc_new_marektshare(q, w, F, C, n)
-            current_best[k] = t[k]
+            print (t[k])
             print("delta_k durch baustufe",t[k], "für facility", k ,": ", delta_k)
+            current_best[k] = t[k]
             self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
                                
         
     def solution(self, D_Star, current_best, B_dict, b_index, q, F, w, C, n, delta_k):
         print("solution")
-        print(q)
-        print(F)
         delta = self.calc_new_marektshare(q, w, F, C, n)
         print(delta)
         print(delta_k)
         print(self.nodes)
         print("Optimale Lösung: ", D_Star)
-        '''print("Es werden folgende Facilites gebaut: ")
+        print("Es werden folgende Facilites gebaut: ")
         for j in range(len(current_best)):
             if current_best[j] > 0:
-                print("Facility ", j, " wird gebaut mit dem Budget ", B_dict[j][current_best[j]])'''
+                print("Facility ", j, " wird gebaut mit dem Budget ", B_dict[j][current_best[j]])
         
     
     def Branch_and_Bound(self, n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best):
@@ -322,7 +318,7 @@ class SCLP:
         D_Star = 0              #D_Star is the best solution so far 'measured in' extra market share
         #U = self.calc_upper_bound(n, p, self.B, b_matrix, e)
         U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-1.csv")
-        self.Branch_and_Bound(n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best)
+        # self.Branch_and_Bound(n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best)
         end_time = time.time()
         execution_time = end_time - start_time
         
