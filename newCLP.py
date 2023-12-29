@@ -212,7 +212,7 @@ class SCLP:
         k = k + 1
         if k == p - 1:
             '''If k = p - 1, calculate the extra market share by using B_B0 to expand facility p'''
-            B_zero = sum(B_dict[k][t[k]] for k in range(p))   #Calculate the used budget so far
+            B_zero = sum(B_dict[j][t[j]] for j in range(0,k))   #Calculate the used budget so far from the higher nodes of the tree
             b = self.B - B_zero
             print ("Für p zur Verfügung: ", b)
             x = 0
@@ -223,7 +223,7 @@ class SCLP:
                     break
             t[k] = x
             B_zero = B_zero + B_dict[k][t[k]]
-            print("That will leave us with a B_zero: ", B_zero)
+            #print("That will leave us with a B_zero: ", B_zero)
             new_share = self.calc_deltak(t, k, w, F, C, n, b_index)
             print("new_share: ", new_share)
             print("D_Star: ", D_Star)
@@ -265,8 +265,10 @@ class SCLP:
             h = math.ceil(self.H * ((self.B - B_zero) / self.B))
             print ("B_zero: ", B_zero)
             delta_k = self.calc_deltak(t, k, w, F, C, n, b_index)
-            if delta_k > D_Star:
-                D_Star = delta_k
+            D_Star_new = self.calc_deltak(t, p-1, w, F, C, n, b_index)
+            if D_Star_new > D_Star:
+                D_Star = D_Star_new
+                current_best = t.copy()
                 print ("current_best: ", current_best)
             print (delta_k)
             self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
@@ -286,7 +288,7 @@ class SCLP:
         print("Es werden folgende Facilites gebaut: ")
         for j in range(len(t)):
             if t[j] > 0:
-                print("Facility ", j, " wird gebaut mit dem Budget ", B_dict[j][t[j]])
+                print("Facility ", j+1 , " wird gebaut mit dem Budget ", B_dict[j][t[j]])
         
     
     def Branch_and_Bound(self, n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best):
@@ -340,7 +342,7 @@ class SCLP:
         current_best = [0 for _ in range(n)]       #the current best list will include the best solution so far
         D_Star = 0              #D_Star is the best solution so far 'measured in' extra market share
         #U = self.calc_upper_bound(n, p, self.B, b_matrix, e)
-        U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-1.csv")
+        U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-8.csv")
         self.Branch_and_Bound(n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best)
         end_time = time.time()
         execution_time = end_time - start_time
@@ -348,10 +350,10 @@ class SCLP:
         pid = os.getpid()
         current_process = psutil.Process(pid)
         cpu_usage = current_process.cpu_percent(interval=1)
-        memory_usage = current_process.memory_info().rss / (1024 * 1024)  # in Megabytes
+        memory_usage = current_process.memory_info().rss / (1024 * 1024)  # in Megabytesy‚
 
         print(f"Ausführungszeit: {execution_time} Sekunden")
         print(f"CPU-Nutzung: {cpu_usage}%")
         print(f"Speichernutzung: {memory_usage} MB")
 
-SCLP(20, 5000, 0, 500).run(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed1.csv")
+SCLP(20, 5000, 0, 500).run(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed8.csv")
