@@ -125,20 +125,6 @@ class SCLP:
         delta = self.calc_new_marektshare(q_help, w, F, C, n)
         return delta
     
-    '''
-    Wenn die Distanz von i zu j größer als r0 ist für die ersten 10 facilites, aber kleiner als r0 für die zweiten 10 facilities, dann ist j in der pre_list enthalten
-    Die Pre-List speichert nämlich die Indizes der Facilites die bereits 100 Prozent Market share haben (kompletten Demand abgreifen)
-    
-    def pre_analyisis(self, n, d_matrix):
-        pre_list = []
-        for i in range (n):
-            for j in range (10):
-                if d_matrix[i,j] < self.r0:
-                    for k in range(10,19):
-                        if d_matrix[i,k] > self.r0:
-                            pre_list.append(i)
-        return pre_list
-    '''
     
     # e[i] is the market share added when demand point i is covered by a single additional chain facility
     '''Hier ist die Pre-Analysis schon mit drin, da wir nur die e[i] für die Demand Points berechnen, die noch nicht 100 Prozent Market Share haben'''
@@ -170,7 +156,7 @@ class SCLP:
             print (k)
             for h in range (H, -1, -1):
                 U[h][k] = max(U[s][k] + U[h-s][k+1] for s in range(h+1))
-        with open('/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-8.csv', 'w', newline='') as file:
+        with open('/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-3.csv', 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerows(U)
         
@@ -223,7 +209,7 @@ class SCLP:
                     break
             t[k] = x
             B_zero = B_zero + B_dict[k][t[k]]
-            #print("That will leave us with a B_zero: ", B_zero)
+
             new_share = self.calc_deltak(t, k, w, F, C, n, b_index)
             print("new_share: ", new_share)
             print("D_Star: ", D_Star)
@@ -234,7 +220,7 @@ class SCLP:
                 print("We would improve the solution by using the rest budget on facality p")
                 D_Star = new_share
                 current_best = t.copy()
-                
+            
             '''Set k=p-1 and go to Step 4'''
             k = p - 2
             self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, new_share, indices, q)
@@ -258,7 +244,7 @@ class SCLP:
             if k >= 0:
                 self.BandB_4(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
             elif k == -1:
-                self.solution(D_Star, current_best, B_dict, b_index, q, F, w, C, n, delta_k, t)
+                self.solution(D_Star, current_best, B_dict, b_index, q)
         
         elif B_zero <= self.B:
             print(t)
@@ -266,7 +252,7 @@ class SCLP:
             print ("B_zero: ", B_zero)
             delta_k = self.calc_deltak(t, k, w, F, C, n, b_index)
             D_Star_new = self.calc_deltak(t, p-1, w, F, C, n, b_index)
-            if D_Star_new > D_Star:
+            if D_Star_new >= D_Star:
                 D_Star = D_Star_new
                 current_best = t.copy()
                 print ("current_best: ", current_best)
@@ -274,21 +260,21 @@ class SCLP:
             self.BandB_2(n, p, t, k, B_zero, b_matrix, B_dict, b_index, D_Star, U, h, F, C, w, current_best, delta_k, indices, q)
                                
         
-    def solution(self, D_Star, current_best, B_dict, b_index, q, F, w, C, n, delta_k, t):
+    def solution(self, D_Star, current_best, B_dict, b_index, q):
         print("solution")
+        
         indices = []
-        for j in range (len(t)):
-            indices = self.get_index_list(b_index, j, t[j])
+        for j in range (len(current_best)):
+            indices = self.get_index_list(b_index, j, current_best[j])
             for i in indices:
                 q[i] = 1
-        delta = self.calc_new_marektshare(q, w, F, C, n)
-        print(delta)
         print(self.nodes)
-        print("Optimale Lösung: ", delta)
+        print("Optimale Lösung: ", D_Star)
         print("Es werden folgende Facilites gebaut: ")
-        for j in range(len(t)):
-            if t[j] > 0:
-                print("Facility ", j+1 , " wird gebaut mit dem Budget ", B_dict[j][t[j]])
+        for j in range(len(current_best)):
+            if current_best[j] > 0:
+                print("Facility ", j+1 , " wird gebaut mit dem Budget ", B_dict[j][current_best[j]])
+        print(current_best)
         
     
     def Branch_and_Bound(self, n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best):
@@ -342,7 +328,7 @@ class SCLP:
         current_best = [0 for _ in range(n)]       #the current best list will include the best solution so far
         D_Star = 0              #D_Star is the best solution so far 'measured in' extra market share
         #U = self.calc_upper_bound(n, p, self.B, b_matrix, e)
-        U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-8.csv")
+        U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-1.csv")
         self.Branch_and_Bound(n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best)
         end_time = time.time()
         execution_time = end_time - start_time
@@ -356,4 +342,4 @@ class SCLP:
         print(f"CPU-Nutzung: {cpu_usage}%")
         print(f"Speichernutzung: {memory_usage} MB")
 
-SCLP(20, 5000, 0, 500).run(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed8.csv")
+SCLP(20, 5000, 0, 500).run(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed1.csv")
