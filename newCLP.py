@@ -156,7 +156,7 @@ class SCLP:
             print (k)
             for h in range (H, -1, -1):
                 U[h][k] = max(U[s][k] + U[h-s][k+1] for s in range(h+1))
-        with open('/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-3.csv', 'w', newline='') as file:
+        with open('/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-11.csv', 'w', newline='') as file:
             writer = csv.writer(file)
             writer.writerows(U)
         
@@ -328,7 +328,7 @@ class SCLP:
         current_best = [0 for _ in range(n)]       #the current best list will include the best solution so far
         D_Star = 0              #D_Star is the best solution so far 'measured in' extra market share
         #U = self.calc_upper_bound(n, p, self.B, b_matrix, e)
-        U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-1.csv")
+        U = self.calc_upper_bound("/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/U-Tabellen/U-11.csv")
         self.Branch_and_Bound(n, p, b_matrix, B_dict, b_index, D_Star, U, F, C, w, current_best)
         end_time = time.time()
         execution_time = end_time - start_time
@@ -336,10 +336,10 @@ class SCLP:
         pid = os.getpid()
         current_process = psutil.Process(pid)
         cpu_usage = current_process.cpu_percent(interval=1)
-        memory_usage = current_process.memory_info().rss / (1024 * 1024)  # in Megabytesy‚
+        memory_usage = current_process.memory_info().rss / (1024 * 1024)  # in Megabytes‚
 
         print(f"Ausführungszeit: {execution_time} Sekunden")
         print(f"CPU-Nutzung: {cpu_usage}%")
         print(f"Speichernutzung: {memory_usage} MB")
 
-SCLP(20, 5000, 0, 500).run(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed1.csv")
+SCLP(20, 5000, 0, 500).run(filepath= "/Users/marcelpflugfelder/Documents/02_Studium/Master/Semester 4/07_Seminar/files/pmed11.csv")
